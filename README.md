@@ -62,9 +62,23 @@ docker compose exec db psql -U auditoria -d auditoria_development -c 'SELECT cal
 
 Se as credenciais do banco em `.env` forem diferentes, ajuste o comando `psql`. Cada publicação tem um identificador SQS diferente, mas contém o mesmo `messageId` do contrato: apenas uma chamada e um registro de mensagem são criados. Para publicar outro arquivo, acrescente seu caminho no container após `publish`.
 
-O consumidor usa `AWS_REGION`, `SQS_QUEUE_URL` e, opcionalmente, `SQS_ENDPOINT`; sem endpoint, o SDK usa a cadeia padrão de credenciais AWS. No Compose usam-se exclusivamente credenciais fictícias e MiniStack. O script local exige `SQS_ENDPOINT` HTTP explícito em `localhost`, `127.0.0.1`, `::1` ou `ministack`, ignora credenciais do ambiente e usa `test/test`. Não use o nome `ministack` para um servidor remoto. A fila é criada com visibilidade de 120 segundos e DLQ com cinco recebimentos; mensagens inválidas e conflitos não são excluídos. O consumidor espera até 20 segundos por mensagens, termina o processamento corrente ao receber SIGTERM/SIGINT e somente remove a mensagem após o commit. Erros de recebimento são repetidos com intervalo fixo; backoff com jitter e demonstrações de falhas pertencem à etapa 6.
+O consumidor usa `AWS_REGION`, `SQS_QUEUE_URL` e, opcionalmente, `SQS_ENDPOINT`; sem endpoint, o SDK usa a cadeia padrão de credenciais AWS. No Compose usam-se exclusivamente credenciais fictícias e MiniStack. O script local exige `SQS_ENDPOINT` HTTP explícito em `localhost`, `127.0.0.1`, `::1` ou `ministack`, ignora credenciais do ambiente e usa `test/test`. Não use o nome `ministack` para um servidor remoto. `SQS_VISIBILITY_TIMEOUT` define a visibilidade em segundos (padrão 120) e `SQS_MAX_RECEIVE_COUNT` o limite de recebimentos antes da DLQ (padrão 5). Execute novamente o setup após alterar a configuração. Ajuste a visibilidade para superar o processamento normal. Mensagens inválidas e conflitos não são excluídos. O consumidor espera até 20 segundos por mensagens, termina o processamento corrente ao receber SIGTERM/SIGINT e somente remove a mensagem após o commit. Erros de recebimento são repetidos com backoff exponencial e jitter, limitado a 30 segundos; uma recepção bem-sucedida reinicia o intervalo.
 
-A documentação do [MiniStack SQS](https://ministack.org/docs/services/sqs) lista suporte a visibilidade e DLQ, e o [código do serviço](https://github.com/ministackorg/ministack/blob/main/ministack/services/sqs.py) implementa long polling e redrive. Para verificar esses recursos na imagem configurada, execute `docker compose run --rm sqs-setup bundle exec ruby scripts/check_local_sqs.rb`. O teste cria filas temporárias locais e as remove ao terminar. As demonstrações completas de falhas continuam na etapa 6.
+A documentação do [MiniStack SQS](https://ministack.org/docs/services/sqs) lista suporte a visibilidade e DLQ, e o [código do serviço](https://github.com/ministackorg/ministack/blob/main/ministack/services/sqs.py) implementa long polling e redrive. Para verificar esses recursos na imagem configurada, execute `docker compose run --rm sqs-setup bundle exec ruby scripts/check_local_sqs.rb`. O teste cria filas temporárias locais e as remove ao terminar.
+
+## Demonstrações distribuídas
+
+Com os serviços locais iniciados e as imagens atualizadas, execute:
+
+```bash
+docker compose build
+docker compose run --rm --no-deps consumer bundle exec rails runner scripts/distributed_demo.rb
+bash scripts/demo_broker_recovery.sh
+```
+
+O primeiro comando de demonstração usa filas temporárias e chamadas com identificadores aleatórios, removidos ao final. Ele verifica F2 (processo encerrado após inserção e antes do commit, seguido de rollback e reentrega), F3 (cinco publicações, uma chamada e uma mensagem processada), F4 (mensagem inválida e conflito na DLQ) e F8 (três processos, 24 entregas e 12 chamadas). Também verifica recuperação após falha de conexão com o banco e após falha simulada na exclusão SQS. Usa visibilidade de dois segundos e redrive após duas tentativas para acelerar a demonstração; a fila normal mantém os valores configurados. A falha de exclusão é injetada apenas no script, enquanto as demais operações usam MiniStack e PostgreSQL.
+
+O segundo script cria um projeto Compose isolado, para e reinicia seu MiniStack, verifica falha de recepção e recuperação automática do consumidor e confirma uma chamada persistida. Ele remove os containers, a rede e o volume que criou ao terminar. Como as filas do MiniStack não são persistentes nesta configuração, o script recria a fila após reiniciar o broker e publica a mensagem em seguida; não demonstra retenção de mensagens durante a queda. A execução requer acesso ao Docker e suporte do Compose à diretiva `!reset`.
 
 ## Consulta e saúde
 

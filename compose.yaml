@@ -58,6 +58,8 @@ services:
     environment: &sqs_environment
       SQS_ENDPOINT: http://ministack:4566
       SQS_QUEUE_NAME: ${SQS_QUEUE_NAME:-auditoria-calls}
+      SQS_MAX_RECEIVE_COUNT: ${SQS_MAX_RECEIVE_COUNT:-5}
+      SQS_VISIBILITY_TIMEOUT: ${SQS_VISIBILITY_TIMEOUT:-120}
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test

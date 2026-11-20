@@ -34,4 +34,14 @@ RSpec.describe SqsConsumer do
     expect(ProcessedMessage.count).to eq(1)
     expect(client.api_requests.count { |r| r[:operation_name] == :delete_message }).to eq(2)
   end
+
+  it "retries receiving after failures and resets the backoff after success" do
+    random = instance_double(Random)
+    allow(random).to receive(:rand).and_return(0.0)
+    worker = described_class.new(client: client, queue_url: queue_url, logger: Logger.new(StringIO.new), random: random)
+    client.stub_responses(:receive_message, ["ServiceUnavailable", "ServiceUnavailable", {}, lambda { |_context| worker.stop; {} }])
+    worker.run
+    expect(client.api_requests.count { |r| r[:operation_name] == :receive_message }).to eq(4)
+    expect(random).to have_received(:rand).twice
+  end
 end
