@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auditoria-voip.local/contracts/call.completed.v1.schema.json",
+  "title": "call.completed v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["messageId", "correlationId", "type", "version", "occurredAt", "payload"],
+  "properties": {
+    "messageId": { "type": "string", "format": "uuid" },
+    "correlationId": { "type": "string", "format": "uuid" },
+    "type": { "const": "call.completed" },
+    "version": { "type": "integer", "const": 1 },
+    "occurredAt": { "$ref": "#/$defs/timestamp" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["callId", "caller", "callee", "startedAt", "endedAt", "durationSeconds", "status"],
+      "properties": {
+        "callId": { "$ref": "#/$defs/nonblank" },
+        "caller": { "$ref": "#/$defs/nonblank" },
+        "callee": { "$ref": "#/$defs/nonblank" },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "answeredAt": { "$ref": "#/$defs/timestamp" },
+        "endedAt": { "$ref": "#/$defs/timestamp" },
+        "durationSeconds": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+        "status": { "enum": ["answered", "missed", "rejected"] }
+      },
+      "allOf": [{
+        "if": { "properties": { "status": { "const": "answered" } }, "required": ["status"] },
+        "then": { "required": ["answeredAt"] },
+        "else": { "not": { "required": ["answeredAt"] }, "properties": { "durationSeconds": { "const": 0 } } }
+      }]
+    }
+  },
+  "$defs": {
+    "nonblank": { "type": "string", "pattern": "\\S" },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "(?:Z|[+-][0-9]{2}:[0-9]{2})$" }
+  }
+}

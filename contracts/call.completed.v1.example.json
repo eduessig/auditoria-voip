@@ -1,0 +1,17 @@
+{
+  "messageId": "38d8817d-29eb-4f69-a45d-1d6dd51d5a2b",
+  "correlationId": "5f908fea-99b9-448e-9632-700943829e49",
+  "type": "call.completed",
+  "version": 1,
+  "occurredAt": "2026-11-20T14:35:00Z",
+  "payload": {
+    "callId": "call-20261120-001",
+    "caller": "1001",
+    "callee": "1002",
+    "startedAt": "2026-11-20T14:30:00Z",
+    "answeredAt": "2026-11-20T14:30:15Z",
+    "endedAt": "2026-11-20T14:35:00Z",
+    "durationSeconds": 285,
+    "status": "answered"
+  }
+}

@@ -1,6 +1,6 @@
 # Auditoria VoIP
 
-Base do microsserviço de auditoria de chamadas para a disciplina de Sistemas Distribuídos. Nesta etapa, a aplicação Rails API-only possui apenas PostgreSQL e RSpec configurados.
+Base do microsserviço de auditoria de chamadas para a disciplina de Sistemas Distribuídos. A aplicação Rails API-only usa PostgreSQL e RSpec e possui modelos para chamadas concluídas e mensagens processadas.
 
 ## Pré-requisitos
 
@@ -47,3 +47,9 @@ RAILS_ENV=test bundle exec rspec
 ```
 
 O PostgreSQL precisa aceitar as credenciais configuradas e permitir que o usuário crie os bancos. A mensageria e os endpoints de consulta serão adicionados em etapas posteriores.
+
+## Modelo e contrato
+
+As migrations criam `calls` e `processed_messages`, com unicidade, chave estrangeira e restrições de integridade no PostgreSQL. O contrato proposto do evento, suas regras e um exemplo estão em [contracts/](contracts/README.md). A semântica exata da duração ainda precisa ser confirmada com a central; a validação do evento e o processamento transacional pertencem à etapa 3.
+
+Para conferir a reversibilidade das migrations em um banco de teste preparado, execute `RAILS_ENV=test bundle exec rails db:rollback STEP=2` e depois `RAILS_ENV=test bundle exec rails db:migrate`. Em Docker, execute esses comandos com `docker compose run --rm -e RAILS_ENV=test api` antes de `bundle exec`.

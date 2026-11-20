@@ -1,0 +1,7 @@
+# Evento `call.completed`, versão 1
+
+O corpo da mensagem contém diretamente o envelope descrito em [call.completed.v1.schema.json](call.completed.v1.schema.json); [call.completed.v1.example.json](call.completed.v1.example.json) traz um exemplo. O schema usa JSON Schema draft 2020-12: o validador deve verificar também os formatos `uuid` e `date-time`. Não são aceitos campos adicionais.
+
+`messageId` identifica a mensagem do contrato e deve ser preservado em republicações; não é o ID do SQS ou SNS. `correlationId` identifica a correlação. `callId` identifica a chamada. Os horários são ISO 8601 com fuso explícito e serão persistidos em UTC. `occurredAt` deve ser igual ou posterior a `endedAt`; `startedAt` deve ser igual ou anterior a `endedAt` e, quando presente, `answeredAt` deve estar entre ambos. Essas comparações entre campos não são expressas pelo JSON Schema e devem ser verificadas pelo consumidor.
+
+A duração é expressa em segundos de conversa, a partir do atendimento. Nesta proposta inicial, `answered` exige `answeredAt`; `missed` e `rejected` omitem esse campo e têm duração zero. A semântica exata e o arredondamento da duração dependem de confirmação com a central, por isso o banco não exige igualdade entre duração e diferença dos horários. Campos opcionais são omitidos, não enviados como `null`. A validação do envelope e das regras temporais no consumidor será implementada na etapa 3.
