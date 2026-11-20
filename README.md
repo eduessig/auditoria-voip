@@ -50,6 +50,18 @@ O PostgreSQL precisa aceitar as credenciais configuradas e permitir que o usuár
 
 ## Modelo e contrato
 
-As migrations criam `calls` e `processed_messages`, com unicidade, chave estrangeira e restrições de integridade no PostgreSQL. O contrato proposto do evento, suas regras e um exemplo estão em [contracts/](contracts/README.md). A semântica exata da duração ainda precisa ser confirmada com a central; a validação do evento e o processamento transacional pertencem à etapa 3.
+As migrations criam `calls` e `processed_messages`, com unicidade, chave estrangeira e restrições de integridade no PostgreSQL. O contrato proposto do evento, suas regras e um exemplo estão em [contracts/](contracts/README.md). A semântica exata da duração ainda precisa ser confirmada com a central; o processamento transacional simulado valida o evento antes de persisti-lo.
 
 Para conferir a reversibilidade das migrations em um banco de teste preparado, execute `RAILS_ENV=test bundle exec rails db:rollback STEP=2` e depois `RAILS_ENV=test bundle exec rails db:migrate`. Em Docker, execute esses comandos com `docker compose run --rm -e RAILS_ENV=test api` antes de `bundle exec`.
+
+## Processamento simulado
+
+Sem depender de SQS, execute o serviço com o exemplo do contrato em um banco preparado:
+
+```bash
+docker compose run --rm api bundle exec rails runner 'p CallCompletedProcessor.call(File.read("contracts/call.completed.v1.example.json"))'
+```
+
+O serviço retorna `:processed` ao registrar uma mensagem e `:duplicate` em uma reentrega equivalente. Ele lança `CallCompletedProcessor::InvalidMessage` para dados inválidos e `CallCompletedProcessor::Conflict` para identidades reutilizadas com conteúdo incompatível. Chamada e mensagem são gravadas na mesma transação; impressões digitais normalizam fusos e ordem das propriedades. Registros anteriores sem impressões digitais são considerados conflitos, pois seu conteúdo original não pode ser verificado. A duração e o contrato ainda dependem de confirmação com a central.
+
+Os testes de concorrência utilizam conexões independentes com PostgreSQL e exigem um pool de pelo menos cinco conexões.
