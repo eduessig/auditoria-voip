@@ -43,7 +43,6 @@ class SqsConsumer
     @client.delete_message(queue_url: @queue_url, receipt_handle: message.receipt_handle)
     @logger.info("SQS message processed: sqs_id=#{message.message_id} result=#{result}")
   rescue StandardError => e
-    # Do not log the payload, exception text, receipt handle, or connection settings.
     @logger.error("SQS message failed: sqs_id=#{message.message_id} error=#{e.class}")
   end
 end

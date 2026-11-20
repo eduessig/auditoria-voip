@@ -2,7 +2,6 @@ require_relative "local_sqs_support"
 require "securerandom"
 require "timeout"
 
-# Run only against disposable local queues; the unique calls are removed afterwards.
 client, endpoint = LocalSqs.client_and_endpoint
 token = SecureRandom.hex(8)
 name = "auditoria-demo-#{token}"
@@ -30,7 +29,6 @@ begin
   arn = client.get_queue_attributes(queue_url: url.call(dlq), attribute_names: ["QueueArn"]).attributes.fetch("QueueArn")
   client.create_queue(queue_name: name, attributes: { "VisibilityTimeout" => "2", "RedrivePolicy" => JSON.generate(deadLetterTargetArn: arn, maxReceiveCount: "2") })
 
-  # F2: stop a real process after its INSERT, while the transaction is still open.
   event = make_body.call
   publish.call(event)
   message = wait_for.call { receive.call }
@@ -56,14 +54,12 @@ begin
   raise "F2 failed" unless Call.where(call_id: JSON.parse(event)["payload"]["callId"]).count == 1
   puts "F2: rollback after process termination and redelivery: OK"
 
-  # F3: five separate SQS messages with one contract identity.
   event = make_body.call
   5.times { publish.call(event) }
   5.times { consumer.call.process(wait_for.call { receive.call }) }
   raise "F3 failed" unless Call.where(call_id: JSON.parse(event)["payload"]["callId"]).count == 1 && ProcessedMessage.where(message_id: JSON.parse(event)["messageId"]).count == 1
   puts "F3: five publications, one call and one processed message: OK"
 
-  # A failed delete leaves the committed message available for redelivery.
   event = make_body.call
   publish.call(event)
   message = wait_for.call { receive.call }
@@ -86,20 +82,18 @@ begin
   raise "database recovery failed" unless ProcessedMessage.where(message_id: JSON.parse(event)["messageId"]).count == 1
   puts "Database connection failure and redelivery: OK"
 
-  # F4: invalid content and a conflicting identity both reach the actual DLQ.
   conflict = JSON.parse(event)
   conflict["payload"]["caller"] = "conflict"
   ["invalid JSON", JSON.generate(conflict)].each do |invalid|
     publish.call(invalid)
     2.times { consumer.call.process(wait_for.call { receive.call }); sleep 2.2 }
     wait_for.call do
-      receive.call # triggers redrive in the emulator
+      receive.call
       client.receive_message(queue_url: url.call(dlq), wait_time_seconds: 1).messages.first
     end
   end
   puts "F4: invalid and conflicting messages reached DLQ: OK"
 
-  # F8: independent processes contend for repeated messages on one real queue.
   events = Array.new(12) { make_body.call }
   events.each { |value| 2.times { publish.call(value) } }
   workers = 3.times.map do

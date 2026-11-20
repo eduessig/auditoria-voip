@@ -1,11 +1,9 @@
 require_relative "local_sqs_support"
 
-# Only known local addresses are accepted; never discover credentials from the environment.
 client, endpoint = LocalSqs.client_and_endpoint
 name = ENV.fetch("SQS_QUEUE_NAME", "auditoria-calls")
 abort "Invalid queue name" unless /\A[a-zA-Z0-9_-]{1,76}\z/.match?(name)
 
-# Construct URLs using the validated endpoint, not a URL returned by the emulator.
 queue_url = ->(queue_name) { "#{endpoint}/000000000000/#{queue_name}" }
 case ARGV.fetch(0, "")
 when "setup"
@@ -21,7 +19,6 @@ when "setup"
   begin
     client.create_queue(queue_name: name)
   rescue Aws::SQS::Errors::QueueNameExists
-    # Existing queues are updated below.
   end
   client.set_queue_attributes(queue_url: queue_url.call(name), attributes: attributes)
   puts "Local queues ready: #{name}, #{dlq}"

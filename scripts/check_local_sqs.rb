@@ -27,7 +27,6 @@ ensure
     begin
       client.delete_queue(queue_url: url.call(queue))
     rescue Aws::SQS::Errors::NonExistentQueue
-      # A queue may not have been created if setup failed.
     end
   end
 end
