@@ -13,7 +13,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-A API estará disponível em `http://localhost:3000`; os endpoints de consulta ainda serão implementados. O Compose inicia PostgreSQL, MiniStack, preparação dos recursos, API e consumidor independente. O PostgreSQL é persistido no volume `postgres_data`. Para encerrar, use `docker compose down`; o volume permanece preservado. As filas do MiniStack são locais e podem ser recriadas ao reiniciar o emulador.
+A API estará disponível em `http://localhost:3000`. O Compose inicia PostgreSQL, MiniStack, preparação dos recursos, API e consumidor independente. O PostgreSQL é persistido no volume `postgres_data`. Para encerrar, use `docker compose down`; o volume permanece preservado. As filas do MiniStack são locais e podem ser recriadas ao reiniciar o emulador.
 
 Para preparar e testar o banco de teste:
 
@@ -56,6 +56,7 @@ Com o Compose iniciado, publique o mesmo exemplo duas vezes e consulte os regist
 docker compose run --rm sqs-setup bundle exec ruby scripts/local_sqs.rb publish
 docker compose run --rm sqs-setup bundle exec ruby scripts/local_sqs.rb publish
 docker compose logs consumer
+curl http://localhost:3000/api/v1/calls/call-20261120-001
 docker compose exec db psql -U auditoria -d auditoria_development -c 'SELECT call_id, caller, callee FROM calls; SELECT message_id, call_id FROM processed_messages;'
 ```
 
@@ -64,6 +65,18 @@ Se as credenciais do banco em `.env` forem diferentes, ajuste o comando `psql`. 
 O consumidor usa `AWS_REGION`, `SQS_QUEUE_URL` e, opcionalmente, `SQS_ENDPOINT`; sem endpoint, o SDK usa a cadeia padrão de credenciais AWS. No Compose usam-se exclusivamente credenciais fictícias e MiniStack. O script local exige `SQS_ENDPOINT` HTTP explícito em `localhost`, `127.0.0.1`, `::1` ou `ministack`, ignora credenciais do ambiente e usa `test/test`. Não use o nome `ministack` para um servidor remoto. A fila é criada com visibilidade de 120 segundos e DLQ com cinco recebimentos; mensagens inválidas e conflitos não são excluídos. O consumidor espera até 20 segundos por mensagens, termina o processamento corrente ao receber SIGTERM/SIGINT e somente remove a mensagem após o commit. Erros de recebimento são repetidos com intervalo fixo; backoff com jitter e demonstrações de falhas pertencem à etapa 6.
 
 A documentação do [MiniStack SQS](https://ministack.org/docs/services/sqs) lista suporte a visibilidade e DLQ, e o [código do serviço](https://github.com/ministackorg/ministack/blob/main/ministack/services/sqs.py) implementa long polling e redrive. Para verificar esses recursos na imagem configurada, execute `docker compose run --rm sqs-setup bundle exec ruby scripts/check_local_sqs.rb`. O teste cria filas temporárias locais e as remove ao terminar. As demonstrações completas de falhas continuam na etapa 6.
+
+## Consulta e saúde
+
+`GET /api/v1/calls` retorna `data` e `pagination` (página, tamanho, total de registros e total de páginas). A ordenação é por início decrescente, com desempate pelo identificador interno. Os filtros opcionais `caller`, `callee` e `status` são correspondências exatas; `started_at_from` e `started_at_to` são limites inclusivos em ISO 8601 com fuso explícito. `page` começa em 1 e `per_page` varia de 1 a 100 (padrão 20). A página máxima é 1000000. Os parâmetros inválidos retornam 400. `GET /api/v1/calls/:call_id` retorna `data` ou 404. Todos os timestamps são UTC.
+
+```bash
+curl 'http://localhost:3000/api/v1/calls?caller=1001&status=answered&page=1&per_page=10&started_at_from=2026-11-20T00%3A00%3A00Z'
+curl http://localhost:3000/health
+docker compose exec consumer ruby bin/check_consumer_health.rb
+```
+
+`/health` executa uma consulta ao PostgreSQL e retorna 200 ou 503. A verificação separada do consumidor retorna JSON e código de saída 0 somente quando o processo está ativo, o ciclo avançou nos últimos 90 segundos e a última recepção SQS foi bem-sucedida nos últimos 90 segundos; caso contrário retorna código 1. Ela observa a última recepção, não faz uma nova chamada à fila. Processamentos que durem mais de 90 segundos podem ser considerados parados. Execute-a no mesmo container e namespace de processos do consumidor; para múltiplos processos no mesmo container, configure um `CONSUMER_HEALTH_PATH` diferente para cada um e use o mesmo caminho na verificação. O arquivo é temporário e não comprova a identidade do processo após eventual reutilização do PID.
 
 ## Modelo e contrato
 
