@@ -13,6 +13,18 @@ services:
       timeout: 5s
       retries: 12
 
+  db-setup:
+    build: .
+    command: ["bundle", "exec", "rails", "db:prepare"]
+    environment:
+      RAILS_ENV: development
+      DATABASE_HOST: db
+      DATABASE_USER: ${DATABASE_USER:-auditoria}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-auditoria_local}
+    depends_on:
+      db:
+        condition: service_healthy
+
   api:
     build: .
     environment:
@@ -27,6 +39,50 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      db-setup:
+        condition: service_completed_successfully
+
+  ministack:
+    image: ministackorg/ministack:1.5.43
+    ports:
+      - "127.0.0.1:4566:4566"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4566/_ministack/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  sqs-setup:
+    build: .
+    command: ["bundle", "exec", "ruby", "scripts/local_sqs.rb", "setup"]
+    environment: &sqs_environment
+      SQS_ENDPOINT: http://ministack:4566
+      SQS_QUEUE_NAME: ${SQS_QUEUE_NAME:-auditoria-calls}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    depends_on:
+      ministack:
+        condition: service_healthy
+
+  consumer:
+    build: .
+    command: ["bundle", "exec", "rails", "runner", "bin/consume_sqs.rb"]
+    environment:
+      <<: *sqs_environment
+      RAILS_ENV: development
+      DATABASE_HOST: db
+      DATABASE_USER: ${DATABASE_USER:-auditoria}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-auditoria_local}
+      SQS_QUEUE_URL: http://ministack:4566/000000000000/${SQS_QUEUE_NAME:-auditoria-calls}
+    depends_on:
+      db:
+        condition: service_healthy
+      db-setup:
+        condition: service_completed_successfully
+      sqs-setup:
+        condition: service_completed_successfully
+    stop_grace_period: 40s
 
 volumes:
   postgres_data:

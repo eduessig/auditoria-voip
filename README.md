@@ -13,7 +13,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-A API estará disponível em `http://localhost:3000`. Nesta etapa ainda não existem endpoints da aplicação. O PostgreSQL é persistido no volume `postgres_data`. O container da API aguarda o banco e prepara o banco de desenvolvimento ao iniciar. Para encerrar, use `docker compose down`; o volume permanece preservado.
+A API estará disponível em `http://localhost:3000`; os endpoints de consulta ainda serão implementados. O Compose inicia PostgreSQL, MiniStack, preparação dos recursos, API e consumidor independente. O PostgreSQL é persistido no volume `postgres_data`. Para encerrar, use `docker compose down`; o volume permanece preservado. As filas do MiniStack são locais e podem ser recriadas ao reiniciar o emulador.
 
 Para preparar e testar o banco de teste:
 
@@ -46,7 +46,24 @@ RAILS_ENV=test bundle exec rails db:prepare
 RAILS_ENV=test bundle exec rspec
 ```
 
-O PostgreSQL precisa aceitar as credenciais configuradas e permitir que o usuário crie os bancos. A mensageria e os endpoints de consulta serão adicionados em etapas posteriores.
+O PostgreSQL precisa aceitar as credenciais configuradas e permitir que o usuário crie os bancos.
+
+## Fila SQS local
+
+Com o Compose iniciado, publique o mesmo exemplo duas vezes e consulte os registros diretamente no banco:
+
+```bash
+docker compose run --rm sqs-setup bundle exec ruby scripts/local_sqs.rb publish
+docker compose run --rm sqs-setup bundle exec ruby scripts/local_sqs.rb publish
+docker compose logs consumer
+docker compose exec db psql -U auditoria -d auditoria_development -c 'SELECT call_id, caller, callee FROM calls; SELECT message_id, call_id FROM processed_messages;'
+```
+
+Se as credenciais do banco em `.env` forem diferentes, ajuste o comando `psql`. Cada publicação tem um identificador SQS diferente, mas contém o mesmo `messageId` do contrato: apenas uma chamada e um registro de mensagem são criados. Para publicar outro arquivo, acrescente seu caminho no container após `publish`.
+
+O consumidor usa `AWS_REGION`, `SQS_QUEUE_URL` e, opcionalmente, `SQS_ENDPOINT`; sem endpoint, o SDK usa a cadeia padrão de credenciais AWS. No Compose usam-se exclusivamente credenciais fictícias e MiniStack. O script local exige `SQS_ENDPOINT` HTTP explícito em `localhost`, `127.0.0.1`, `::1` ou `ministack`, ignora credenciais do ambiente e usa `test/test`. Não use o nome `ministack` para um servidor remoto. A fila é criada com visibilidade de 120 segundos e DLQ com cinco recebimentos; mensagens inválidas e conflitos não são excluídos. O consumidor espera até 20 segundos por mensagens, termina o processamento corrente ao receber SIGTERM/SIGINT e somente remove a mensagem após o commit. Erros de recebimento são repetidos com intervalo fixo; backoff com jitter e demonstrações de falhas pertencem à etapa 6.
+
+A documentação do [MiniStack SQS](https://ministack.org/docs/services/sqs) lista suporte a visibilidade e DLQ, e o [código do serviço](https://github.com/ministackorg/ministack/blob/main/ministack/services/sqs.py) implementa long polling e redrive. Para verificar esses recursos na imagem configurada, execute `docker compose run --rm sqs-setup bundle exec ruby scripts/check_local_sqs.rb`. O teste cria filas temporárias locais e as remove ao terminar. As demonstrações completas de falhas continuam na etapa 6.
 
 ## Modelo e contrato
 
